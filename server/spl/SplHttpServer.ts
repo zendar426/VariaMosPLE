@@ -1,4 +1,7 @@
 import crypto from "crypto";
+import { DeepSeekConfig, LlmHttpAdapter } from "./adapters/llm/LlmHttpAdapter";
+import { InterpretConfigurationUseCase, InterpretationInputError } from "./application/configuration-assistant/InterpretConfigurationUseCase";
+import { LlmError, LlmGateway } from "./application/configuration-assistant/ports/LlmGateway";
 import Busboy from "busboy";
 import fs from "fs";
 import http, { IncomingMessage, ServerResponse } from "http";
@@ -75,6 +78,9 @@ const MAX_REQUEST_BYTES = 1024 * 1024;
 export type DerivationAction = "plan" | "build" | "deploy";
 
 export interface SplHttpServerConfig {
+  configurationAssistant?: DeepSeekConfig;
+  /** In-process test seam; never configured through environment variables. */
+  llmGateway?: LlmGateway;
   gitRepositories?: Record<string, string>;
   localRoots?: Record<string, string>;
   outputRoot: string;
@@ -418,6 +424,9 @@ export function createSplHttpHandler(config: SplHttpServerConfig): SplHttpHandle
     ...(auditSink === "file" || auditSink === "both" ? { filePath: auditFilePath } : {}),
   });
   const repository = new SecureStateRepository(secureStateDirectory);
+  if (config.configurationAssistant) audit.redactor.registerSecret(config.configurationAssistant.apiKey);
+  const llmGateway = config.llmGateway || (config.configurationAssistant ? new LlmHttpAdapter(config.configurationAssistant) : undefined);
+  const interpreter = llmGateway ? new InterpretConfigurationUseCase(llmGateway) : undefined;
   const unavailableProviderId = macOsKeychainEnabled
     ? "macos-keychain" as const
     : "aws-secrets-manager" as const;
@@ -650,6 +659,33 @@ export function createSplHttpHandler(config: SplHttpServerConfig): SplHttpHandle
       }
       return authorizer.authorize(request, projectId, action);
     };
+    const interpretationMatch = routePath.match(/^\/api\/spl\/v1\/projects\/([^/]+)\/configuration-assistant\/interpret$/);
+    if (request.method === "POST" && interpretationMatch) {
+      const requestId = crypto.randomUUID();
+      const projectId = interpretationMatch[1];
+      const controller = new AbortController();
+      const cancel = () => { if (!response.writableEnded) controller.abort(); };
+      response.once("close", cancel);
+      try {
+        const actor = await authorize(projectId, "derivation:plan");
+        if (!interpreter) throw new LlmError("ASSISTANT_UNAVAILABLE", 503);
+        if (request.headers["content-type"]?.split(";")[0].trim() !== "application/json") {
+          throw new SplHttpServerError(415, "The interpretation request must use application/json.");
+        }
+        const result = await interpreter.execute(await readJsonBody(request), controller.signal);
+        audit.record({ event: "configuration.interpret", result: "succeeded", actorId: actor.userId,
+          projectId, details: { requestId, contextDigest: result.contextDigest, promptVersion: result.promptVersion } });
+        sendJson(response, 200, { requestId, projectId, ...result });
+      } catch (error) {
+        const status = error instanceof AuthorizationError || error instanceof SplHttpServerError || error instanceof LlmError
+          ? error.statusCode : error instanceof InterpretationInputError ? 400 : 500;
+        const code = error instanceof LlmError ? error.code : status === 500 ? "INTERNAL_ERROR" : "INTERPRETATION_REQUEST_REJECTED";
+        audit.record({ event: "configuration.interpret", result: "failed", projectId, details: { requestId, code } });
+        if (!response.destroyed) sendJson(response, status, { requestId, code,
+          error: error instanceof LlmError ? error.message : "The configuration interpretation request could not be completed." });
+      } finally { response.removeListener("close", cancel); }
+      return;
+    }
     if (request.method === "GET" && routePath === "/api/spl/v1/target-adapters") {
       sendJson(response, 200, {
         schemaVersion: "deployment-target-adapter-index/v1",
