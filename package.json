@@ -65,7 +65,7 @@
     "test:collab": "npm test -- --testPathPattern=src/DataProvider/Services/collab/tests",
     "validate:contracts": "node contracts/scripts/validate-contracts.cjs",
     "test:contracts": "node --test contracts/tests/contracts.test.cjs",
-    "test:spl": "npm run build:server && node --test server/tests/personal-target-state.test.cjs server/tests/spl/derivation-resolver.test.cjs server/tests/spl/static-site-builder.test.cjs server/tests/spl/nginx-container-deployer.test.cjs server/tests/spl/node-container-deployer.test.cjs server/tests/spl/spl-mapping-model-adapter.test.cjs server/tests/spl/node-modular-monolith-builder.test.cjs server/tests/spl/spl-http-server.test.cjs server/tests/spl/security-deployment.test.cjs",
+    "test:spl": "npm run build:server && node --test server/tests/personal-target-state.test.cjs server/tests/spl/derivation-resolver.test.cjs server/tests/spl/static-site-builder.test.cjs server/tests/spl/nginx-container-deployer.test.cjs server/tests/spl/node-container-deployer.test.cjs server/tests/spl/spl-mapping-model-adapter.test.cjs server/tests/spl/node-modular-monolith-builder.test.cjs server/tests/spl/spl-http-server.test.cjs server/tests/spl/security-deployment.test.cjs server/tests/spl/configuration-assistant.test.cjs server/tests/spl/configuration-assistant-http.test.cjs",
     "test:server": "npm run build:server && node --test server/tests/unified-server.test.cjs",
     "test:event-portal": "npm --prefix examples/event-portal test && npm --prefix examples/event-portal run typecheck",
     "test:e2e:external-project": "npm run build:server && node contracts/scripts/run-external-project-e2e.cjs",
