@@ -78,6 +78,15 @@ export function loadUnifiedServerConfig(options: {
   const uploadMaxBytes = positiveInteger(environment.SPL_UPLOAD_MAX_BYTES, 104857600, "SPL_UPLOAD_MAX_BYTES");
   const uploadMaxFiles = positiveInteger(environment.SPL_UPLOAD_MAX_FILES, 500, "SPL_UPLOAD_MAX_FILES");
   const spl: SplHttpServerConfig = {
+    configurationAssistant: (() => {
+      const timeoutMs = Number(environment.SPL_DEEPSEEK_TIMEOUT_MS || "30000");
+      const apiKey = environment.SPL_DEEPSEEK_API_KEY?.trim();
+      const model = environment.SPL_DEEPSEEK_MODEL?.trim() || "deepseek-flash";
+      if (environment.SPL_CONFIGURATION_ASSISTANT_ENABLED !== "true" || !apiKey ||
+          /[\r\n]/.test(apiKey) || !["deepseek-flash", "deepseek-v4-pro"].includes(model) ||
+          !Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 120000) return undefined;
+      return { apiKey, model, timeoutMs };
+    })(),
     gitRepositories: {},
     outputRoot: path.join(stateRoot, "projects", "products"),
     releaseStateDirectory: path.join(stateRoot, "projects", "releases"),
